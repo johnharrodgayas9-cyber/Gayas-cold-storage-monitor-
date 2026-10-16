@@ -1,0 +1,1030 @@
+<title>Cold Storage Monitor</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=JetBrains+Mono:wght@500&family=Sora:wght@500;600;700&display=swap">
+<style>
+/* Layout: persistent left rail + one working column; rail becomes a bottom tab bar on phones. Cold glacier-teal accent, semantic green/amber/red kept separate. */
+:root{
+  --bg:#EDF2F5;--surface:#FFFFFF;--surface-2:#F4F8FA;--ink:#0E2430;--muted:#506777;--line:#D2DDE3;
+  --accent:#0A6C8B;--accent-ink:#FFFFFF;--accent-soft:#DCEFF5;
+  --ok:#17653C;--ok-bg:#DDF2E5;--warn:#7A4F00;--warn-bg:#FFEFC7;--bad:#A8231B;--bad-bg:#FCE1DE;
+  --shadow:0 1px 2px rgba(14,36,48,.06),0 8px 22px rgba(14,36,48,.07);
+  --f-display:'Sora',system-ui,sans-serif;--f-body:'DM Sans',system-ui,sans-serif;--f-mono:'JetBrains Mono',ui-monospace,monospace;
+  --r:12px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0A171E;--surface:#122530;--surface-2:#0F202A;--ink:#E6F0F4;--muted:#93A9B6;--line:#25414F;
+  --accent:#4FB8D6;--accent-ink:#04222C;--accent-soft:#16384A;
+  --ok:#6BD39B;--ok-bg:#12392A;--warn:#F2C063;--warn-bg:#3A2C0C;--bad:#FF9A92;--bad-bg:#451916;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 22px rgba(0,0,0,.25);color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0A171E;--surface:#122530;--surface-2:#0F202A;--ink:#E6F0F4;--muted:#93A9B6;--line:#25414F;
+  --accent:#4FB8D6;--accent-ink:#04222C;--accent-soft:#16384A;
+  --ok:#6BD39B;--ok-bg:#12392A;--warn:#F2C063;--warn-bg:#3A2C0C;--bad:#FF9A92;--bad-bg:#451916;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 22px rgba(0,0,0,.25);color-scheme:dark}
+
+*{box-sizing:border-box}
+html,body{min-height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--f-body);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:60;background:var(--surface)}
+h1,h2,h3{font-family:var(--f-display);margin:0;text-wrap:balance;letter-spacing:-.01em}
+h1{font-size:1.6rem;line-height:1.2}h2{font-size:1.05rem}h3{font-size:.95rem}
+p{margin:0}
+a{color:var(--accent)}
+.ic{width:20px;height:20px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.ic.sm{width:16px;height:16px}.ic.lg{width:28px;height:28px}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:6px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.num{font-variant-numeric:tabular-nums}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 18px;border-radius:10px;border:1.5px solid var(--accent);background:var(--accent);color:var(--accent-ink);font:700 .92rem var(--f-body);cursor:pointer;text-decoration:none;transition:transform .12s,background .12s}
+.btn:hover{transform:translateY(-1px)}
+.btn:active{transform:none}
+.btn.sec{background:var(--surface);color:var(--accent)}
+.btn.sec:hover{background:var(--accent-soft)}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--ink)}
+.btn.ghost:hover{background:var(--surface-2)}
+.btn.bad{background:var(--bad);border-color:var(--bad);color:var(--surface)}
+.btn.sm{min-height:44px;padding:0 12px;font-size:.85rem}
+.btn[disabled]{opacity:.5;cursor:not-allowed;transform:none}
+.iconbtn{display:inline-grid;place-items:center;width:44px;height:44px;border-radius:10px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;position:relative}
+.iconbtn:hover{background:var(--surface-2)}
+.badge{position:absolute;top:-6px;right:-6px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:var(--bad);color:var(--surface);font:700 .72rem/20px var(--f-body);text-align:center}
+.badge[data-n="0"]{display:none}
+
+/* pills */
+.pill{display:inline-flex;align-items:center;gap:6px;padding:2px 10px;border-radius:999px;font:700 .76rem/1.6 var(--f-body);white-space:nowrap}
+.pill.ok{background:var(--ok-bg);color:var(--ok)}.pill.warn{background:var(--warn-bg);color:var(--warn)}.pill.bad{background:var(--bad-bg);color:var(--bad)}.pill.neutral{background:var(--surface-2);color:var(--muted);border:1px solid var(--line)}
+.pill .ic{width:14px;height:14px}
+
+/* login */
+#login{max-width:1080px;margin:0 auto;min-height:100vh;display:grid;grid-template-columns:1.05fr 1fr;gap:0;align-items:stretch;padding-block:max(20px,env(safe-area-inset-top,0px)) max(20px,env(safe-area-inset-bottom,0px))}
+.l-brand{background:#0B3B4D;color:#EAF6FA;border-radius:20px 0 0 20px;padding:44px 40px;display:flex;flex-direction:column;justify-content:space-between;gap:32px;position:relative;overflow:hidden}
+.l-brand h1{font-size:2rem;line-height:1.15;max-width:15ch}
+.l-brand p{color:#B9D6E0;max-width:38ch}
+.l-brand ul{list-style:none;margin:0;padding:0;display:grid;gap:14px}
+.l-brand li{display:flex;gap:12px;align-items:flex-start;color:#DCEEF4}
+.l-brand .ic{margin-top:2px;color:#8FD8EE}
+.l-gauge{position:absolute;right:-30px;top:-20px;width:230px;height:230px;opacity:.16;pointer-events:none}
+.l-form{background:var(--surface);border-radius:0 20px 20px 0;padding:44px 40px;display:flex;flex-direction:column;justify-content:center;gap:18px;box-shadow:var(--shadow)}
+.logo{display:flex;align-items:center;gap:10px;font:600 1rem var(--f-display)}
+.logo i{display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:var(--accent);color:var(--accent-ink)}
+
+/* forms */
+.field{display:grid;gap:6px}
+.field label,.lbl{font-weight:700;font-size:.88rem}
+.field .hint{font-size:.8rem;color:var(--muted)}
+.inp,select.inp,textarea.inp{width:100%;min-height:46px;padding:0 12px;border:1.5px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font:500 .95rem var(--f-body)}
+textarea.inp{padding:10px 12px;min-height:76px;resize:vertical}
+.inp:hover{border-color:var(--muted)}
+.inp:focus-visible{border-color:var(--accent);outline-offset:1px}
+.field.err .inp{border-color:var(--bad);background:var(--bad-bg)}
+.errmsg{display:none;gap:6px;align-items:center;color:var(--bad);font-size:.82rem;font-weight:700}
+.field.err .errmsg{display:flex}
+.pw{position:relative}.pw .iconbtn{position:absolute;right:2px;top:1px;width:44px;height:44px;border:0;background:transparent}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.row.sb{justify-content:space-between}
+.check{display:flex;align-items:center;gap:10px;min-height:44px}
+.check input{width:20px;height:20px;accent-color:var(--accent)}
+.stepper{display:flex;gap:8px}.stepper .inp{text-align:center;font-variant-numeric:tabular-nums}
+.stepper .iconbtn{flex:none}
+.banner{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-radius:12px;font-size:.9rem}
+.banner.bad{background:var(--bad-bg);color:var(--bad)}.banner.warn{background:var(--warn-bg);color:var(--warn)}.banner.ok{background:var(--ok-bg);color:var(--ok)}.banner.info{background:var(--accent-soft);color:var(--ink)}
+.banner b{display:block}
+
+/* app shell */
+#shell{max-width:1320px;margin:0 auto;display:grid;grid-template-columns:232px minmax(0,1fr);gap:24px;padding-block:calc(env(safe-area-inset-top,0px) + 16px) 32px;align-items:start}
+.rail{position:sticky;top:calc(env(safe-area-inset-top,0px) + 16px);background:var(--surface);border-radius:16px;box-shadow:var(--shadow);padding:16px 12px;display:flex;flex-direction:column;gap:6px;min-height:calc(100vh - 48px)}
+.rail .logo{padding:4px 8px 14px}
+.nav{display:grid;gap:4px}
+.nav a,.nav button{display:flex;align-items:center;gap:12px;min-height:48px;padding:0 12px;border-radius:10px;border:0;background:transparent;color:var(--ink);font:500 .95rem var(--f-body);text-decoration:none;cursor:pointer;text-align:left;width:100%;position:relative}
+.nav a:hover,.nav button:hover{background:var(--surface-2)}
+.nav a[aria-current="page"]{background:var(--accent-soft);font-weight:700;color:var(--ink)}
+.nav a[aria-current="page"]::before{content:"";position:absolute;left:-12px;top:10px;bottom:10px;width:4px;border-radius:0 4px 4px 0;background:var(--accent)}
+.nav .badge{position:static;margin-left:auto}
+.rail .who{margin-top:auto;border-top:1px solid var(--line);padding:12px 8px 0;display:grid;gap:10px}
+.who b{display:block;font-size:.9rem}.who span{font-size:.8rem;color:var(--muted)}
+.topbar{display:none}
+main{min-width:0;display:grid;gap:20px}
+.ph{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.ph p{color:var(--muted);margin-top:4px}
+.crumbs{display:flex;gap:6px;align-items:center;font-size:.85rem;color:var(--muted);margin-bottom:6px;flex-wrap:wrap}
+.crumbs a,.crumbs button{color:var(--accent);background:none;border:0;font:inherit;cursor:pointer;padding:0;min-height:32px;text-decoration:underline}
+.card{background:var(--surface);border-radius:var(--r);box-shadow:var(--shadow);padding:20px}
+.card.flat{box-shadow:none;border:1px solid var(--line)}
+.card h2{margin-bottom:12px}
+.cols{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:20px;align-items:start}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+.kpi{background:var(--surface);border-radius:var(--r);box-shadow:var(--shadow);padding:16px 18px;display:grid;gap:4px}
+.kpi small{color:var(--muted);font-weight:500}
+.kpi strong{font:600 1.9rem/1.1 var(--f-display);font-variant-numeric:tabular-nums}
+.kpi.bad strong{color:var(--bad)}
+.units{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.unit{display:grid;gap:12px;align-content:start}
+.unit .t{font:600 2.1rem/1 var(--f-display);font-variant-numeric:tabular-nums}
+.scale{position:relative;height:10px;border-radius:5px;background:var(--surface-2);border:1px solid var(--line)}
+.scale i{position:absolute;top:-1px;bottom:-1px;border-radius:5px;background:var(--ok-bg);border:1px solid var(--ok)}
+.scale u{position:absolute;top:-5px;width:4px;height:18px;border-radius:2px;background:var(--ink);transform:translateX(-2px);text-decoration:none;transition:left .6s}
+.meta{display:flex;justify-content:space-between;gap:8px;font-size:.82rem;color:var(--muted)}
+.list{display:grid}
+.li{display:flex;justify-content:space-between;align-items:center;gap:12px;min-height:56px;padding:8px 0;border-bottom:1px solid var(--line)}
+.li:last-child{border-bottom:0}
+.li b{display:block}.li small{color:var(--muted)}
+
+/* tabs / segmented */
+.seg{display:inline-flex;border:1.5px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface);flex-wrap:wrap}
+.seg button{min-height:44px;padding:0 16px;border:0;background:transparent;color:var(--ink);font:600 .88rem var(--f-body);cursor:pointer}
+.seg button+button{border-left:1.5px solid var(--line)}
+.seg button[aria-pressed="true"],.seg button[aria-selected="true"]{background:var(--accent);color:var(--accent-ink)}
+.seg button:not([aria-pressed="true"]):not([aria-selected="true"]):hover{background:var(--surface-2)}
+
+/* table-like rows */
+.tbl{display:grid;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);overflow:hidden}
+.qi{display:none}
+h1[tabindex]:focus{outline:none}
+.tr{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr) minmax(0,1.1fr) 90px minmax(0,1.5fr) 150px;gap:12px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line);min-height:62px}
+.tr:last-child{border-bottom:0}
+.tr.th{background:var(--surface-2);font:700 .78rem var(--f-body);color:var(--muted);text-transform:uppercase;letter-spacing:.06em;min-height:44px}
+.tr .nm b{display:block}.tr .nm small{color:var(--muted)}
+.tr.flash{animation:flash 2.4s ease-out 1}
+@keyframes flash{0%,60%{background:var(--accent-soft)}100%{background:transparent}}
+.tr .acts{display:flex;gap:6px;justify-content:flex-end}
+.tr .lab{display:none}
+.filters{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.filters .inp{width:auto;min-width:150px}
+.search{position:relative;flex:1 1 240px}.search .inp{padding-left:40px;width:100%}.search .ic{position:absolute;left:12px;top:13px;color:var(--muted)}
+.empty{text-align:center;padding:40px 16px;display:grid;gap:10px;justify-items:center;color:var(--muted)}
+
+/* wizard */
+.steps{display:flex;gap:8px;flex-wrap:wrap;list-style:none;margin:0;padding:0}
+.steps li{display:flex;align-items:center;gap:8px;font-weight:600;font-size:.88rem;color:var(--muted)}
+.steps li span{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;border:1.5px solid var(--line);font-size:.8rem}
+.steps li[aria-current="step"]{color:var(--ink)}
+.steps li[aria-current="step"] span,.steps li.done span{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.steps li+li::before{content:"";width:24px;height:2px;background:var(--line);margin-right:0}
+.est{display:grid;gap:10px}
+.est .big{font:600 1.6rem/1.1 var(--f-display)}
+dl.sum{display:grid;grid-template-columns:minmax(120px,.7fr) 1.3fr;gap:0;margin:0}
+dl.sum dt,dl.sum dd{margin:0;padding:12px 0;border-bottom:1px solid var(--line)}
+dl.sum dt{color:var(--muted)}dl.sum dd{font-weight:600}
+.done-hero{text-align:center;display:grid;gap:12px;justify-items:center;padding:12px 0}
+.done-hero .tick{width:72px;height:72px;border-radius:50%;background:var(--ok-bg);color:var(--ok);display:grid;place-items:center}
+.done-hero .tick .ic{width:36px;height:36px;stroke-width:2.4}
+
+/* chart */
+.chart{width:100%;height:auto;display:block}
+.ch-grid{stroke:var(--line);stroke-width:1}
+.ch-band{fill:var(--ok-bg)}
+.ch-line{fill:none;stroke:var(--accent);stroke-width:2.5;stroke-linejoin:round}
+.ch-area{fill:var(--accent);opacity:.1}
+.ch-dot{fill:var(--accent);stroke:var(--surface);stroke-width:2}
+.ch-txt{fill:var(--muted);font:11px var(--f-body)}
+.ch-dash{stroke:var(--warn);stroke-width:1.5;stroke-dasharray:4 4}
+.ch-today{stroke:var(--ink);stroke-width:1.5}
+.read{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.read .big{font:600 2.6rem/1 var(--f-display);font-variant-numeric:tabular-nums}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok);margin-right:6px;animation:pulse 2s infinite}
+@keyframes pulse{50%{opacity:.35}}
+.toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px}
+.sw{position:relative;width:52px;height:30px;flex:none}
+.sw input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer;width:100%;height:100%}
+.sw span{position:absolute;inset:0;border-radius:15px;background:var(--line);transition:background .2s}
+.sw span::after{content:"";position:absolute;left:3px;top:3px;width:24px;height:24px;border-radius:50%;background:var(--surface);transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.sw input:checked+span{background:var(--accent)}
+.sw input:checked+span::after{transform:translateX(22px)}
+.sw input:focus-visible+span{outline:3px solid var(--accent);outline-offset:2px}
+.sw input:disabled+span{opacity:.5}
+
+/* alerts */
+.al{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:14px;align-items:center;padding:14px 0;border-bottom:1px solid var(--line)}
+.al:last-child{border-bottom:0}
+.al .sev{width:40px;height:40px;border-radius:10px;display:grid;place-items:center}
+.al .sev.bad{background:var(--bad-bg);color:var(--bad)}.al .sev.warn{background:var(--warn-bg);color:var(--warn)}.al .sev.ok{background:var(--ok-bg);color:var(--ok)}
+.al small{color:var(--muted)}
+.al .acts{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+
+/* overlays */
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 24px);z-index:80;display:grid;gap:8px;width:min(480px,calc(100vw - 32px));pointer-events:none}
+.t-item{pointer-events:auto;display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;background:var(--ink);color:var(--bg);box-shadow:var(--shadow);font-weight:500;animation:rise .25s ease-out}
+.t-item.ok .ic{color:#6BD39B}.t-item.bad .ic{color:#FF9A92}.t-item.warn .ic{color:#F2C063}
+.t-item button{margin-left:auto;min-height:44px;padding:0 10px;border:0;background:transparent;color:inherit;font:700 .88rem var(--f-body);text-decoration:underline;cursor:pointer}
+@keyframes rise{from{transform:translateY(10px);opacity:0}}
+#modal{position:fixed;inset:0;z-index:90;background:rgba(5,18,25,.55);display:grid;place-items:center;padding:16px}
+.dlg{background:var(--surface);color:var(--ink);border-radius:16px;box-shadow:var(--shadow);max-width:440px;width:100%;padding:24px;display:grid;gap:14px}
+.dlg .row{justify-content:flex-end}
+
+@media (max-width:1100px){
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .units{grid-template-columns:1fr}
+  .cols{grid-template-columns:1fr}
+  .tr{grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) minmax(0,1.3fr) 150px}
+  .qi{display:inline}
+  .tr .c-cat,.tr .c-qty{display:none}
+  .tr.th .c-cat,.tr.th .c-qty{display:none}
+}
+@media (max-width:860px){
+  #login{grid-template-columns:1fr;min-height:0}
+  .l-brand{border-radius:20px 20px 0 0;padding:28px 24px}
+  .l-form{border-radius:0 0 20px 20px;padding:28px 24px}
+  #shell{grid-template-columns:1fr;gap:16px;padding-block:calc(env(safe-area-inset-top,0px) + 8px) 104px}
+  .rail{position:fixed;left:0;right:0;bottom:0;top:auto;z-index:50;min-height:0;border-radius:16px 16px 0 0;padding:6px max(8px,env(safe-area-inset-left,0px)) calc(env(safe-area-inset-bottom,0px) + 6px) max(8px,env(safe-area-inset-right,0px));flex-direction:row}
+  .rail .logo,.rail .who{display:none}
+  .nav{grid-auto-flow:column;grid-auto-columns:1fr;width:100%;gap:2px}
+  .nav a{flex-direction:column;gap:2px;justify-content:center;min-height:56px;padding:4px 2px;font-size:.7rem;text-align:center;line-height:1.15}
+  .nav a[aria-current="page"]::before{left:20%;right:20%;top:0;bottom:auto;width:auto;height:3px;border-radius:0 0 3px 3px}
+  .nav .badge{position:absolute;top:2px;right:18%;margin:0}
+  .nav .logout{display:none}
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;position:sticky;top:env(safe-area-inset-top,0px);z-index:40;background:var(--surface);margin-inline:calc(-1 * max(16px,env(safe-area-inset-left,0px)));padding:8px max(16px,env(safe-area-inset-right,0px)) 8px max(16px,env(safe-area-inset-left,0px));box-shadow:var(--shadow)}
+  .topbar .row{flex-wrap:nowrap}
+  .grid2{grid-template-columns:1fr}
+  h1{font-size:1.35rem}
+  .read .big{font-size:2.1rem}
+  .tr{grid-template-columns:1fr auto;gap:8px 12px;padding:14px 16px}
+  .tr.th{display:none}
+  .tr .c-unit,.tr .c-date{display:flex;grid-column:1}
+  .tr .lab{display:inline;color:var(--muted);font-size:.8rem;margin-right:6px}
+  .tr .acts{grid-column:1 / -1;justify-content:flex-start}
+  .al{grid-template-columns:auto minmax(0,1fr)}
+  .al .acts{grid-column:1 / -1;justify-content:flex-start}
+  dl.sum{grid-template-columns:1fr}
+  dl.sum dt{border-bottom:0;padding-bottom:0}
+  #toast{bottom:calc(env(safe-area-inset-bottom,0px) + 88px)}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></symbol>
+    <symbol id="i-thermo" viewBox="0 0 24 24"><path d="M14 14.8V5a2 2 0 0 0-4 0v9.8a4 4 0 1 0 4 0z"/></symbol>
+    <symbol id="i-box" viewBox="0 0 24 24"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 9a6 6 0 0 1 12 0c0 6 2 7 2 7H4s2-1 2-7"/><path d="M10 20a2 2 0 0 0 4 0"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3l10 18H2L12 3z"/><path d="M12 10v5M12 18v.01"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></symbol>
+    <symbol id="i-snow" viewBox="0 0 24 24"><path d="M12 2v20M4.2 7l15.6 10M4.2 17L19.8 7"/><path d="M9 3.5l3 2.5 3-2.5M9 20.5l3-2.5 3 2.5"/></symbol>
+    <symbol id="i-drop" viewBox="0 0 24 24"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/></symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 4H5v16h4"/><path d="M16 8l4 4-4 4M20 12H9"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13 7l4 4"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.01"/></symbol>
+    <symbol id="i-fan" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M12 10c0-4 1-7 4-7 2 0 2 3 0 5l-3 3M14 12c4 0 7 1 7 4 0 2-3 2-5 0l-3-3M12 14c0 4-1 7-4 7-2 0-2-3 0-5l3-3M10 12c-4 0-7-1-7-4 0-2 3-2 5 0l3 3"/></symbol>
+    <symbol id="i-tag" viewBox="0 0 24 24"><path d="M3 12V4h8l10 10-8 8L3 12z"/><circle cx="8" cy="9" r="1.2"/></symbol>
+  </defs>
+</svg>
+
+<!-- Screen 1: Login -->
+<div id="login">
+  <section class="l-brand" aria-label="About this system">
+    <svg class="l-gauge" viewBox="0 0 200 200" aria-hidden="true"><circle cx="100" cy="100" r="90" fill="none" stroke="#8FD8EE" stroke-width="2"/><circle cx="100" cy="100" r="66" fill="none" stroke="#8FD8EE" stroke-width="2"/><circle cx="100" cy="100" r="42" fill="none" stroke="#8FD8EE" stroke-width="2"/><path d="M100 10v180M10 100h180M36 36l128 128M164 36L36 164" stroke="#8FD8EE" stroke-width="1.2"/></svg>
+    <div class="logo" style="color:#EAF6FA"><i><svg class="ic" aria-hidden="true"><use href="#i-snow"/></svg></i>Cold Storage Monitor</div>
+    <div style="display:grid;gap:14px">
+      <h1>Know it is cold. Know it is fresh.</h1>
+      <p>Temperature, humidity, stock and expiry for the cold rooms and freezers at DALI Supermarket, in one place.</p>
+    </div>
+    <ul>
+      <li><svg class="ic" aria-hidden="true"><use href="#i-thermo"/></svg><span>Live readings and automatic cooling control for each storage unit</span></li>
+      <li><svg class="ic" aria-hidden="true"><use href="#i-clock"/></svg><span>Expiry predictions that account for how the stock was actually stored</span></li>
+      <li><svg class="ic" aria-hidden="true"><use href="#i-bell"/></svg><span>Alerts before products are lost, not after</span></li>
+    </ul>
+  </section>
+  <section class="l-form" aria-labelledby="login-h">
+    <div style="display:grid;gap:6px"><h2 id="login-h" style="font-size:1.5rem">Log in</h2><p class="muted">DALI Supermarket, Branch cold storage</p></div>
+    <form id="login-form" novalidate style="display:grid;gap:16px">
+      <div class="field"><label for="role">Log in as</label>
+        <select id="role" class="inp"><option>Branch Manager</option><option>Inventory Staff</option><option>Cold Storage Personnel</option><option>Store Employee</option></select></div>
+      <div class="field" id="f-user"><label for="user">Username</label>
+        <input id="user" class="inp" type="text" autocomplete="username" placeholder="e.g. maria.santos">
+        <span class="errmsg" id="e-user"><svg class="ic sm" aria-hidden="true"><use href="#i-alert"/></svg>Enter your username.</span></div>
+      <div class="field" id="f-pass"><label for="pass">Password</label>
+        <div class="pw"><input id="pass" class="inp" type="password" autocomplete="current-password" placeholder="Enter your password" style="padding-right:50px">
+          <button type="button" class="iconbtn" id="pw-toggle" aria-label="Show password"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg></button></div>
+        <span class="errmsg" id="e-pass"><svg class="ic sm" aria-hidden="true"><use href="#i-alert"/></svg>Enter your password.</span></div>
+      <button class="btn" type="submit" style="min-height:48px">Log in</button>
+      <div class="banner info"><svg class="ic" aria-hidden="true"><use href="#i-info"/></svg><div><b>Prototype demo</b>Any username and password works. <button type="button" id="demo-fill" class="btn ghost sm" style="min-height:44px;padding:0 6px;text-decoration:underline;color:var(--accent)">Fill in demo login</button></div></div>
+    </form>
+  </section>
+</div>
+
+<!-- App shell: screens 2 to 9 -->
+<div id="shell" hidden>
+  <aside class="rail">
+    <div class="logo"><i><svg class="ic" aria-hidden="true"><use href="#i-snow"/></svg></i>Cold Storage Monitor</div>
+    <nav class="nav" aria-label="Main">
+      <a href="#dashboard" data-go="dashboard"><svg class="ic" aria-hidden="true"><use href="#i-home"/></svg><span>Dashboard</span></a>
+      <a href="#monitoring" data-go="monitoring"><svg class="ic" aria-hidden="true"><use href="#i-thermo"/></svg><span>Monitoring</span></a>
+      <a href="#inventory" data-go="inventory"><svg class="ic" aria-hidden="true"><use href="#i-box"/></svg><span>Inventory</span></a>
+      <a href="#expiry" data-go="expiry"><svg class="ic" aria-hidden="true"><use href="#i-clock"/></svg><span>Expiry</span></a>
+      <a href="#alerts" data-go="alerts"><svg class="ic" aria-hidden="true"><use href="#i-bell"/></svg><span>Alerts</span><b class="badge" data-badge data-n="0">0</b></a>
+    </nav>
+    <div class="who">
+      <div><b id="who-role">Branch Manager</b><span>DALI Supermarket</span></div>
+      <div class="nav logout"><button type="button" data-act="theme"><svg class="ic" aria-hidden="true"><use href="#i-moon"/></svg><span>Switch theme</span></button>
+      <button type="button" data-act="logout"><svg class="ic" aria-hidden="true"><use href="#i-logout"/></svg><span>Log out</span></button></div>
+    </div>
+  </aside>
+  <main id="main">
+    <div class="topbar">
+      <div class="logo"><i><svg class="ic" aria-hidden="true"><use href="#i-snow"/></svg></i>Cold Storage Monitor</div>
+      <div class="row" style="gap:8px">
+        <button type="button" class="iconbtn" data-act="theme" aria-label="Switch theme"><svg class="ic" aria-hidden="true"><use href="#i-moon"/></svg></button>
+        <button type="button" class="iconbtn" data-act="logout" aria-label="Log out"><svg class="ic" aria-hidden="true"><use href="#i-logout"/></svg></button>
+      </div>
+    </div>
+    <section id="s-dashboard" hidden></section>
+    <section id="s-monitoring" hidden></section>
+    <section id="s-inventory" hidden></section>
+    <section id="s-item-form" hidden></section>
+    <section id="s-item-review" hidden></section>
+    <section id="s-item-done" hidden></section>
+    <section id="s-expiry" hidden></section>
+    <section id="s-alerts" hidden></section>
+  </main>
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+<div id="modal" hidden></div>
+<script>
+(function(){
+'use strict';
+const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const ic=(n,c='')=>`<svg class="ic ${c}" aria-hidden="true"><use href="#i-${n}"/></svg>`;
+
+/* ---------- dates (fixed demo day so all sample data stays consistent) ---------- */
+const TODAY='2026-10-16', MS=86400000;
+const pd=s=>{const [y,m,d]=s.split('-').map(Number);return Date.UTC(y,m-1,d)};
+const addDays=(s,n)=>new Date(pd(s)+n*MS).toISOString().slice(0,10);
+const diff=(a,b)=>Math.round((pd(b)-pd(a))/MS);
+const fmt=s=>new Date(pd(s)).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',timeZone:'UTC'});
+const fmtS=s=>new Date(pd(s)).toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:'UTC'});
+const nowT=()=>new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});
+const fmtT=t=>(t<0?'−':'')+Math.abs(t).toFixed(1);
+
+/* ---------- reference data ---------- */
+const CATS=['Dairy','Meat and fish','Produce','Frozen goods'];
+const SHELF={'Dairy':10,'Meat and fish':5,'Produce':7,'Frozen goods':180};
+const REC={'Dairy':'CR-A','Meat and fish':'CR-A','Produce':'CH-C','Frozen goods':'FZ-B'};
+const UNITS=[
+  {id:'CR-A',name:'Dairy Cold Room',t:3.4,h:82,tmin:1,tmax:5,hmin:75,hmax:90,set:3,mode:'auto',cooling:true,def:[1,5,75,90]},
+  {id:'FZ-B',name:'Frozen Freezer',t:-18.6,h:68,tmin:-22,tmax:-16,hmin:55,hmax:80,set:-19,mode:'auto',cooling:true,def:[-22,-16,55,80]},
+  {id:'CH-C',name:'Produce Chiller',t:9.1,h:91,tmin:4,tmax:8,hmin:85,hmax:95,set:6,mode:'manual',cooling:false,def:[4,8,85,95]}
+];
+const U=id=>UNITS.find(u=>u.id===id);
+const uLabel=id=>U(id)?U(id).name:id;
+
+const INV=[
+  {id:1,name:'Fresh Milk 1L',cat:'Dairy',unit:'CR-A',qty:48,uom:'packs',received:'2026-10-14',bb:'2026-10-24',batch:'B2610-014'},
+  {id:2,name:'Greek Yogurt 150g',cat:'Dairy',unit:'CR-A',qty:36,uom:'packs',received:'2026-10-12',bb:'2026-10-28',batch:'B2610-009'},
+  {id:3,name:'Cheddar Cheese Block 200g',cat:'Dairy',unit:'CR-A',qty:24,uom:'packs',received:'2026-10-08',bb:'2026-11-20',batch:'B2610-004'},
+  {id:4,name:'Fresh Pork Liempo',cat:'Meat and fish',unit:'CR-A',qty:15,uom:'kg',received:'2026-10-15',bb:'2026-10-18',batch:'B2610-017'},
+  {id:5,name:'Strawberries 250g',cat:'Produce',unit:'CH-C',qty:28,uom:'packs',received:'2026-10-14',bb:'2026-10-20',batch:'B2610-015'},
+  {id:6,name:'Romaine Lettuce',cat:'Produce',unit:'CH-C',qty:40,uom:'pcs',received:'2026-10-13',bb:'2026-10-22',batch:'B2610-012'},
+  {id:7,name:'Broccoli Crown',cat:'Produce',unit:'CH-C',qty:35,uom:'pcs',received:'2026-10-12',bb:'2026-10-23',batch:'B2610-010'},
+  {id:8,name:'Frozen Chicken Nuggets 1kg',cat:'Frozen goods',unit:'FZ-B',qty:30,uom:'packs',received:'2026-09-25',bb:'2027-03-25',batch:'B2609-031'},
+  {id:9,name:'Frozen Shrimp 500g',cat:'Frozen goods',unit:'FZ-B',qty:22,uom:'packs',received:'2026-10-01',bb:'2027-01-15',batch:'B2610-001'},
+  {id:10,name:'Vanilla Ice Cream 1.5L',cat:'Frozen goods',unit:'FZ-B',qty:18,uom:'tubs',received:'2026-10-10',bb:'2027-04-10',batch:'B2610-007'}
+];
+
+const S={role:'Branch Manager',screen:'login',monUnit:'CR-A',range:'24h',
+  inv:{q:'',cat:'All',unit:'All',risk:'All'},expFilter:'All',expSel:null,alertTab:'active',setUnit:'CR-A',
+  draft:null,editId:null,saved:null,highlight:null,nextId:100,warnDays:5,alerts:[],aid:1,dirty:false};
+
+/* ---------- unit status and expiry model ---------- */
+function ustatus(u){
+  const tOut=Math.max(u.tmin-u.t,u.t-u.tmax,0), hOut=Math.max(u.hmin-u.h,u.h-u.hmax,0);
+  if(tOut>1)return 'bad';
+  if(tOut>0||hOut>0)return 'warn';
+  return 'ok';
+}
+const STX={ok:'In range',warn:'Near limit',bad:'Out of range'};
+const pill=(k,t,i)=>`<span class="pill ${k}">${i?ic(i):''}${esc(t)}</span>`;
+const stPill=u=>{const s=ustatus(u);return pill(s,STX[s],s==='ok'?'check':'alert')};
+
+/* Simulated expiry model for the prototype: supplier date or category shelf life, minus a penalty for storage conditions. */
+function predict(it){
+  const u=U(it.unit); if(!u||!it.received||!it.cat)return null;
+  const base=it.bb||addDays(it.received,SHELF[it.cat]);
+  const st=ustatus(u), penalty=st==='bad'?2:st==='warn'?1:0;
+  const mismatch=REC[it.cat]!==it.unit?3:0;
+  let date=addDays(base,-(penalty+mismatch)); if(date<it.received)date=it.received;
+  const days=diff(TODAY,date);
+  const conf=Math.max(55,92-penalty*6-mismatch*4-(it.bb?0:8));
+  const risk=days<=2?'High':days<=S.warnDays?'Medium':'Low';
+  return {base,date,days,conf,penalty,mismatch,risk,st};
+}
+const riskPill=p=>p.days<0?pill('bad','Expired','alert'):p.risk==='High'?pill('bad','High risk','alert'):p.risk==='Medium'?pill('warn','Medium risk','clock'):pill('ok','Low risk','check');
+const daysTxt=d=>d<0?`${-d} day${d===-1?'':'s'} ago`:d===0?'Today':d===1?'Tomorrow':`${d} days`;
+
+/* ---------- alerts ---------- */
+function mkAlert(kind,sev,title,body,x){return Object.assign({id:S.aid++,kind,sev,title,body,time:nowT(),state:'active'},x||{})}
+function seedAlerts(){
+  S.alerts=[
+    {id:S.aid++,kind:'temp',sev:'bad',title:'Produce Chiller is above its safe range',body:'9.1 °C now, safe range is 4 to 8 °C. Cooling is switched off.',time:'09:42',state:'active',unit:'CH-C'},
+    {id:S.aid++,kind:'sensor',sev:'warn',title:'Sensor battery low',body:'Sensor CR-A-02 in the Dairy Cold Room reports 12% battery.',time:'07:30',state:'active',unit:'CR-A'},
+    {id:S.aid++,kind:'door',sev:'ok',title:'Freezer door left open',body:'Frozen Freezer door was open for 14 minutes. Temperature recovered.',time:'Yesterday 16:05',state:'resolved',resolvedAt:'Yesterday 16:21',unit:'FZ-B'}
+  ];
+  INV.forEach(it=>{const p=predict(it); if(p&&p.risk==='High')S.alerts.push(expiryAlert(it,p))});
+}
+function expiryAlert(it,p,live){return {id:S.aid++,kind:'expiry',sev:'warn',title:`${it.name} may expire ${p.days<=0?'today':p.days===1?'tomorrow':'in '+p.days+' days'}`,body:`Predicted expiry ${fmtS(p.date)}. Stored in ${uLabel(it.unit)}.`,time:live?nowT():'08:15',state:'active',item:it.id}}
+function updateBadges(){
+  const n=S.alerts.filter(a=>a.state==='active').length;
+  $$('[data-badge]').forEach(b=>{b.dataset.n=n;b.textContent=n});
+}
+function checkAlerts(){
+  let changed=false;
+  UNITS.forEach(u=>{
+    const st=ustatus(u), open=S.alerts.find(a=>a.kind==='temp'&&a.unit===u.id&&a.state!=='resolved');
+    if(st==='bad'&&!open){
+      S.alerts.unshift(mkAlert('temp','bad',`${u.name} is ${u.t>u.tmax?'above':'below'} its safe range`,`${fmtT(u.t)} °C now, safe range is ${fmtT(u.tmin)} to ${fmtT(u.tmax)} °C.`,{unit:u.id}));
+      toast(`${u.name} is out of its safe range.`,'bad');changed=true;
+    }else if(st==='ok'&&open){
+      open.state='resolved';open.resolvedAt=nowT();changed=true;
+      toast(`${u.name} is back in range. The alert was resolved automatically.`,'ok');
+    }
+  });
+  updateBadges();
+  if(changed&&S.screen==='alerts')R.alerts();
+}
+
+/* ---------- toast and dialogs ---------- */
+function toast(msg,kind='ok',act){
+  const box=$('#toast'), el=document.createElement('div');
+  el.className='t-item '+kind;
+  el.innerHTML=ic(kind==='ok'?'check':'alert')+`<span>${esc(msg)}</span>`+(act?`<button type="button">${esc(act.label)}</button>`:'');
+  if(act)el.querySelector('button').onclick=()=>{act.fn();el.remove()};
+  box.appendChild(el);
+  setTimeout(()=>el.remove(),act?8000:4500);
+  while(box.children.length>3)box.firstChild.remove();
+}
+function confirmBox(o){
+  const m=$('#modal'), prev=document.activeElement;
+  m.hidden=false;
+  m.innerHTML=`<div class="dlg" role="alertdialog" aria-modal="true" aria-labelledby="dg-t" aria-describedby="dg-b"><h2 id="dg-t">${esc(o.title)}</h2><p id="dg-b" class="muted">${esc(o.body)}</p><div class="row"><button type="button" class="btn sec" data-m="no">${esc(o.cancel||'Cancel')}</button><button type="button" class="btn ${o.danger?'bad':''}" data-m="yes">${esc(o.ok)}</button></div></div>`;
+  const no=$('[data-m="no"]',m), yes=$('[data-m="yes"]',m);
+  const close=()=>{m.hidden=true;m.innerHTML='';document.removeEventListener('keydown',key);if(prev&&document.contains(prev))prev.focus()};
+  function key(e){
+    if(e.key==='Escape'){close();return}
+    if(e.key==='Tab'){e.preventDefault();(document.activeElement===no?yes:no).focus()}
+  }
+  document.addEventListener('keydown',key);
+  no.onclick=close; yes.onclick=()=>{close();o.fn()};
+  m.onclick=e=>{if(e.target===m)close()};
+  no.focus();
+}
+
+/* ---------- simulation of live sensors and cooling ---------- */
+function step(u){
+  const n=(Math.random()-.5)*.1;
+  if(u.mode==='auto'){if(u.t>u.set+.4)u.cooling=true;else if(u.t<u.set-.4)u.cooling=false}
+  const k=u.id==='FZ-B'?.6:1;
+  u.t+=(u.cooling?-.25:.12)*k+n;
+  u.h=Math.min(98,Math.max(40,u.h+(Math.random()-.5)*.6));
+}
+let timer=null;
+function tick(){
+  UNITS.forEach(step);
+  checkAlerts();
+  if(S.screen==='monitoring')R.paintMonitoring();
+  else if(S.screen==='dashboard')R.paintDashboard();
+}
+function startSim(){if(!timer)timer=setInterval(tick,2000)}
+function stopSim(){clearInterval(timer);timer=null}
+
+/* ---------- charts ---------- */
+function hist(u,range){
+  const n=range==='1h'?36:range==='24h'?48:56;
+  let s=[...(u.id+range)].reduce((a,c)=>(a*31+c.charCodeAt(0))|0,7);
+  const rnd=()=>{s=(Math.imul(s,1664525)+1013904223)|0;return ((s>>>8)&0xffff)/0xffff};
+  const amp=(u.tmax-u.tmin)*.08, out=[];
+  for(let i=0;i<n;i++){const f=i/(n-1);out.push(u.set+Math.sin(i/(range==='1h'?3:4))*amp+(rnd()-.5)*amp*.7+(u.t-u.set)*Math.pow(f,3))}
+  out[n-1]=u.t;return out;
+}
+function lineChart(d,o){
+  const W=640,H=240,L=50,Rr=14,T=14,B=34, pad=(o.hi-o.lo)*.35;
+  const mn=Math.min(...d,o.lo)-pad, mx=Math.max(...d,o.hi)+pad;
+  const x=i=>L+(W-L-Rr)*i/(d.length-1), y=v=>T+(H-T-B)*(1-(v-mn)/(mx-mn));
+  let g='';
+  for(let k=0;k<5;k++){const v=mn+(mx-mn)*k/4;g+=`<line class="ch-grid" x1="${L}" x2="${W-Rr}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"/><text class="ch-txt" x="${L-8}" y="${(y(v)+4).toFixed(1)}" text-anchor="end">${fmtT(v)}</text>`}
+  const pts=d.map((v,i)=>`${x(i).toFixed(1)},${y(v).toFixed(1)}`);
+  const area=`M${x(0).toFixed(1)},${H-B} L${pts.join(' L')} L${x(d.length-1).toFixed(1)},${H-B}Z`;
+  const bt=y(o.hi), bh=y(o.lo)-y(o.hi);
+  const xl=o.labels.map((t,i)=>`<text class="ch-txt" x="${[L,(L+W-Rr)/2,W-Rr][i]}" y="${H-10}" text-anchor="${['start','middle','end'][i]}">${esc(t)}</text>`).join('');
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.aria)}"><rect class="ch-band" x="${L}" y="${bt.toFixed(1)}" width="${W-L-Rr}" height="${bh.toFixed(1)}"/>${g}<text class="ch-txt" x="${W-Rr-6}" y="${(bt+14).toFixed(1)}" text-anchor="end">Safe range</text><path class="ch-area" d="${area}"/><polyline class="ch-line" points="${pts.join(' ')}"/><circle class="ch-dot" cx="${x(d.length-1).toFixed(1)}" cy="${y(d[d.length-1]).toFixed(1)}" r="5"/>${xl}</svg>`;
+}
+
+/* ---------- navigation ---------- */
+const R={};
+const NAVKEY={'item-form':'inventory','item-review':'inventory','item-done':'inventory'};
+function go(name){
+  S.screen=name;
+  $$('#shell main > section').forEach(s=>{s.hidden=s.id!=='s-'+name});
+  $$('.nav a').forEach(a=>{if(a.dataset.go===(NAVKEY[name]||name))a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')});
+  R[name]();
+  updateBadges();
+  window.scrollTo(0,0);
+  const h=$('#s-'+name+' h1'); if(h){h.setAttribute('tabindex','-1');h.focus({preventScroll:true})}
+}
+
+/* ================= Screen 2: Dashboard ================= */
+const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+const coolTxt=u=>`${u.cooling?'Cooling on':'Cooling off'} · ${u.mode==='auto'?'Auto':'Manual'}`;
+function unitCard(u){
+  const sp=u.tmax-u.tmin, lo=u.tmin-sp*.7, hi=u.tmax+sp*.7, P=v=>clamp((v-lo)/(hi-lo),0,1)*100;
+  return `<article class="card unit" data-u="${u.id}">
+    <div class="row sb"><div><h3>${esc(u.name)}</h3><small class="muted mono">${u.id}</small></div><span class="js-pill">${stPill(u)}</span></div>
+    <div class="t js-t">${fmtT(u.t)} °C</div>
+    <div><div class="scale" role="img" aria-label="Temperature position against the safe range"><i style="left:${P(u.tmin)}%;width:${P(u.tmax)-P(u.tmin)}%"></i><u class="js-mark" style="left:${P(u.t)}%"></u></div>
+    <div class="meta" style="margin-top:6px"><span>Safe range</span><span class="mono">${fmtT(u.tmin)} to ${fmtT(u.tmax)} °C</span></div></div>
+    <div class="row sb muted" style="font-size:.88rem"><span style="display:inline-flex;gap:6px;align-items:center">${ic('drop','sm')}<span class="js-h mono">${Math.round(u.h)}</span>% humidity</span><span style="display:inline-flex;gap:6px;align-items:center">${ic('fan','sm')}<span class="js-c">${coolTxt(u)}</span></span></div>
+    <a class="btn sec sm" href="#monitoring" data-go="monitoring" data-unit="${u.id}">Open monitor ${ic('chev','sm')}</a>
+  </article>`;
+}
+const sortedByExpiry=()=>INV.map(it=>({it,p:predict(it)})).sort((a,b)=>a.p.days-b.p.days);
+R.dashboard=function(){
+  const exp=sortedByExpiry().slice(0,5), recent=S.alerts.filter(a=>a.state==='active').slice(0,3);
+  $('#s-dashboard').innerHTML=`
+  <div class="ph"><div><h1>Good morning</h1><p>Friday, Oct 16, 2026. Here is the state of your cold storage.</p></div>
+    <button type="button" class="btn" data-act="add-item">${ic('plus')}Add stock item</button></div>
+  <div id="dash-banner"></div>
+  <div class="kpis">
+    <div class="kpi" id="k-range"><small>Units in range</small><strong></strong></div>
+    <div class="kpi" id="k-risk"><small>Items at high expiry risk</small><strong></strong></div>
+    <div class="kpi" id="k-alerts"><small>Active alerts</small><strong></strong></div>
+    <div class="kpi" id="k-items"><small>Items in storage</small><strong></strong></div>
+  </div>
+  <div style="display:grid;gap:12px"><h2>Storage units</h2><div class="units">${UNITS.map(unitCard).join('')}</div></div>
+  <div class="cols">
+    <section class="card"><div class="row sb"><h2 style="margin:0">Expiring soonest</h2><a class="btn ghost sm" href="#expiry" data-go="expiry">View all ${ic('chev','sm')}</a></div>
+      <div class="list" style="margin-top:8px">${exp.map(({it,p})=>`<div class="li"><div><b>${esc(it.name)}</b><small>${esc(uLabel(it.unit))} · predicted ${fmtS(p.date)} (${daysTxt(p.days)})</small></div><div class="row" style="flex-wrap:nowrap">${riskPill(p)}<button type="button" class="btn sec sm" data-act="open-exp" data-id="${it.id}">Review</button></div></div>`).join('')}</div></section>
+    <section class="card"><div class="row sb"><h2 style="margin:0">Open alerts</h2><a class="btn ghost sm" href="#alerts" data-go="alerts">All alerts ${ic('chev','sm')}</a></div>
+      <div class="list" style="margin-top:8px">${recent.length?recent.map(a=>`<div class="li"><div><b>${esc(a.title)}</b><small>${esc(a.time)}</small></div>${pill(a.sev,a.sev==='bad'?'Urgent':'Check','alert')}</div>`).join(''):`<div class="empty">${ic('check','lg')}<b>No open alerts</b><span>Everything is within range.</span></div>`}</div></section>
+  </div>`;
+  R.paintDashboard(true);
+};
+let bannerKey='';
+R.paintDashboard=function(force){
+  if(S.screen!=='dashboard')return;
+  UNITS.forEach(u=>{
+    const c=$(`[data-u="${u.id}"]`); if(!c)return;
+    const sp=u.tmax-u.tmin, lo=u.tmin-sp*.7, hi=u.tmax+sp*.7;
+    $('.js-t',c).textContent=fmtT(u.t)+' °C';
+    $('.js-mark',c).style.left=clamp((u.t-lo)/(hi-lo),0,1)*100+'%';
+    $('.js-h',c).textContent=Math.round(u.h);
+    $('.js-c',c).textContent=coolTxt(u);
+    $('.js-pill',c).innerHTML=stPill(u);
+  });
+  const okN=UNITS.filter(u=>ustatus(u)==='ok').length, high=INV.filter(it=>predict(it).risk==='High').length,
+    act=S.alerts.filter(a=>a.state==='active').length;
+  $('#k-range strong').textContent=`${okN} of ${UNITS.length}`;
+  $('#k-risk strong').textContent=high; $('#k-risk').classList.toggle('bad',high>0);
+  $('#k-alerts strong').textContent=act; $('#k-alerts').classList.toggle('bad',act>0);
+  $('#k-items strong').textContent=INV.length;
+  const bad=UNITS.find(u=>ustatus(u)==='bad'), key=bad?bad.id+bad.mode+bad.cooling:'none';
+  if(force||key!==bannerKey){
+    bannerKey=key;
+    $('#dash-banner').innerHTML=bad?`<div class="banner bad" role="alert">${ic('alert')}<div style="flex:1"><b>${esc(bad.name)} is out of its safe range</b>${bad.mode==='manual'&&!bad.cooling?'Cooling is switched off. Turn on automatic cooling to bring it back to range.':'Cooling is working to bring it back to range.'}</div><button type="button" class="btn sm" data-act="open-mon" data-id="${bad.id}">Fix in Monitoring</button></div>`:'';
+  }
+};
+
+/* ================= Screen 3: Monitoring and control ================= */
+R.monitoring=function(){
+  const u=U(S.monUnit);
+  $('#s-monitoring').innerHTML=`
+  <div class="ph"><div><h1>Monitoring and control</h1><p>Live readings and cooling for each storage unit.</p></div>
+    <div class="seg" role="group" aria-label="Storage unit">${UNITS.map(x=>`<button type="button" aria-pressed="${x.id===S.monUnit}" data-act="mon-unit" data-id="${x.id}">${esc(x.name)}</button>`).join('')}</div></div>
+  <div id="m-banner"></div>
+  <div class="cols">
+    <div style="display:grid;gap:20px;min-width:0">
+      <section class="card"><div class="row sb"><h2 style="margin:0">Current conditions</h2><span id="m-pill"></span></div>
+        <div class="read" style="margin-top:16px"><div><small class="muted">Temperature</small><div class="big" id="m-t"></div><small class="muted" id="m-tr"></small></div>
+        <div><small class="muted">Humidity</small><div class="big" id="m-h"></div><small class="muted" id="m-hr"></small></div></div>
+        <p class="muted" style="margin-top:14px;font-size:.85rem"><span class="dot"></span>Live. This prototype simulates a new reading every 2 seconds.</p></section>
+      <section class="card"><div class="row sb"><h2 style="margin:0">Temperature history</h2>
+        <div class="seg" role="group" aria-label="Time range">${['1h','24h','7d'].map(r=>`<button type="button" aria-pressed="${r===S.range}" data-act="range" data-id="${r}">${r==='7d'?'7 days':r==='24h'?'24 hours':'1 hour'}</button>`).join('')}</div></div>
+        <div id="m-chart" style="margin-top:12px"></div></section>
+    </div>
+    <section class="card" aria-labelledby="ctl-h"><h2 id="ctl-h">Cooling control</h2>
+      <div style="display:grid;gap:16px">
+        <div class="toggle"><div><b>Cooling unit</b><br><small class="muted" id="m-cs"></small></div>
+          <label class="sw"><input type="checkbox" id="m-sw" aria-label="Cooling unit on"><span></span></label></div>
+        <fieldset style="margin:0;border:1.5px solid var(--line);border-radius:10px;padding:4px 14px 8px"><legend style="font-weight:700;font-size:.85rem;padding:0 6px">Mode</legend>
+          <label class="check"><input type="radio" name="mode" value="auto" ${u.mode==='auto'?'checked':''}> Automatic (holds the target temperature)</label>
+          <label class="check"><input type="radio" name="mode" value="manual" ${u.mode==='manual'?'checked':''}> Manual (you switch cooling on and off)</label></fieldset>
+        <div class="field" id="f-set"><label for="m-set">Target temperature (°C)</label>
+          <div class="stepper"><button type="button" class="iconbtn" data-act="set-step" data-d="-0.5" aria-label="Lower target by 0.5">${ic('minus')}</button>
+          <input id="m-set" class="inp" inputmode="decimal" value="${fmtT(u.set)}"><button type="button" class="iconbtn" data-act="set-step" data-d="0.5" aria-label="Raise target by 0.5">${ic('plus')}</button></div>
+          <span class="hint">Allowed: ${fmtT(u.tmin)} to ${fmtT(u.tmax)} °C, the safe range for this unit.</span>
+          <span class="errmsg" id="e-set">${ic('alert','sm')}<span></span></span></div>
+        <button type="button" class="btn" data-act="apply-set" style="min-height:48px">Apply target</button>
+        <div class="banner info" style="font-size:.85rem">${ic('info')}<div>The cooling system is demonstrated on a test chamber in this project. Readings here are simulated.</div></div>
+      </div></section>
+  </div>`;
+  R.paintMonitoring(true);
+};
+let mBan='';
+R.paintMonitoring=function(force){
+  if(S.screen!=='monitoring')return;
+  const u=U(S.monUnit);
+  $('#m-pill').innerHTML=stPill(u);
+  $('#m-t').textContent=fmtT(u.t)+' °C'; $('#m-tr').textContent=`Safe range ${fmtT(u.tmin)} to ${fmtT(u.tmax)} °C`;
+  $('#m-h').textContent=Math.round(u.h)+' %'; $('#m-hr').textContent=`Safe range ${u.hmin} to ${u.hmax} %`;
+  const labels={'1h':['60 min ago','30 min ago','Now'],'24h':['24 h ago','12 h ago','Now'],'7d':['7 days ago','3.5 days ago','Now']}[S.range];
+  $('#m-chart').innerHTML=lineChart(hist(u,S.range),{lo:u.tmin,hi:u.tmax,labels,aria:`${u.name} temperature over the last ${S.range}, in degrees Celsius`});
+  const sw=$('#m-sw'); sw.checked=u.cooling; sw.disabled=u.mode==='auto';
+  $('#m-cs').textContent=u.mode==='auto'?`${u.cooling?'On':'Off'}. Controlled automatically.`:`${u.cooling?'On':'Off'}. You control this switch.`;
+  const st=ustatus(u), key=st+u.mode+u.cooling;
+  if(force||key!==mBan){
+    mBan=key; let h='';
+    if(st==='bad'&&u.mode==='manual'&&!u.cooling)h=`<div class="banner bad" role="alert">${ic('alert')}<div style="flex:1"><b>${esc(u.name)} is out of range and cooling is off</b>Switch to Automatic mode so the unit corrects itself.</div><button type="button" class="btn sm" data-act="auto-on">Switch to Automatic</button></div>`;
+    else if(st==='bad')h=`<div class="banner warn" role="status">${ic('clock')}<div><b>Out of range, cooling in progress</b>The temperature should return to range shortly.</div></div>`;
+    else if(u.mode==='manual')h=`<div class="banner warn" role="status">${ic('info')}<div><b>Manual mode is on</b>The system will not correct the temperature by itself.</div></div>`;
+    $('#m-banner').innerHTML=h;
+  }
+};
+
+/* ================= Screen 4: Inventory ================= */
+function filtered(){
+  const f=S.inv, q=f.q.trim().toLowerCase();
+  return INV.map(it=>({it,p:predict(it)})).filter(({it,p})=>(!q||it.name.toLowerCase().includes(q)||it.batch.toLowerCase().includes(q))&&(f.cat==='All'||it.cat===f.cat)&&(f.unit==='All'||it.unit===f.unit)&&(f.risk==='All'||p.risk===f.risk))
+    .sort((a,b)=>a.p.days-b.p.days);
+}
+R.inventory=function(){
+  const f=S.inv;
+  $('#s-inventory').innerHTML=`
+  <div class="ph"><div><h1>Inventory</h1><p id="inv-sub"></p></div><button type="button" class="btn" data-act="add-item">${ic('plus')}Add item</button></div>
+  <div class="filters">
+    <div class="search"><label class="sr" for="inv-q">Search items</label>${ic('search')}<input id="inv-q" class="inp" type="search" placeholder="Search product or batch" value="${esc(f.q)}"></div>
+    <div><label class="sr" for="inv-cat">Category</label><select id="inv-cat" class="inp">${['All',...CATS].map(c=>`<option value="${esc(c)}" ${f.cat===c?'selected':''}>${c==='All'?'All categories':esc(c)}</option>`).join('')}</select></div>
+    <div><label class="sr" for="inv-unit">Storage unit</label><select id="inv-unit" class="inp"><option value="All">All units</option>${UNITS.map(u=>`<option value="${u.id}" ${f.unit===u.id?'selected':''}>${esc(u.name)}</option>`).join('')}</select></div>
+    <div class="seg" role="group" aria-label="Expiry risk">${['All','High','Medium','Low'].map(r=>`<button type="button" aria-pressed="${f.risk===r}" data-act="inv-risk" data-id="${r}">${r==='All'?'All risk':r}</button>`).join('')}</div>
+  </div>
+  <div id="inv-list"></div>`;
+  R.inventoryList();
+  if(S.highlight){const id=S.highlight;setTimeout(()=>{if(S.highlight===id)S.highlight=null},2600)}
+};
+R.inventoryList=function(){
+  const rows=filtered(), f=S.inv, filt=f.q||f.cat!=='All'||f.unit!=='All'||f.risk!=='All';
+  $('#inv-sub').textContent=`${INV.length} items across ${UNITS.length} storage units, soonest expiry first`;
+  $('#inv-list').innerHTML=rows.length?`
+    <div class="muted" style="font-size:.85rem;margin-bottom:8px" aria-live="polite">Showing ${rows.length} of ${INV.length} items</div>
+    <div class="tbl"><div class="tr th"><span>Product</span><span class="c-cat">Category</span><span>Storage unit</span><span class="c-qty">Qty</span><span>Predicted expiry</span><span class="sr">Actions</span></div>
+    ${rows.map(({it,p})=>`<div class="tr ${S.highlight===it.id?'flash':''}">
+      <div class="nm"><b>${esc(it.name)}</b><small><span class="mono">${esc(it.batch)}</span><span class="qi"> · ${it.qty} ${esc(it.uom)}</span></small></div>
+      <div class="c-cat">${esc(it.cat)}</div>
+      <div class="c-unit"><span class="lab">Unit:</span>${esc(uLabel(it.unit))}</div>
+      <div class="c-qty num">${it.qty} <small class="muted">${esc(it.uom)}</small></div>
+      <div class="c-date" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span><b>${fmtS(p.date)}</b> <small class="muted">${daysTxt(p.days)}</small></span>${riskPill(p)}</div>
+      <div class="acts"><button type="button" class="btn sec sm" data-act="edit-item" data-id="${it.id}" aria-label="Edit ${esc(it.name)}">${ic('edit','sm')}Edit</button><button type="button" class="btn ghost sm" data-act="rm-item" data-id="${it.id}" aria-label="Remove ${esc(it.name)}">${ic('trash','sm')}Remove</button></div>
+    </div>`).join('')}</div>`
+  :`<div class="card empty">${ic('search','lg')}<b>${filt?'No items match these filters':'The inventory is empty'}</b><span>${filt?'Try a different search or clear the filters.':'Add your first stock item to start tracking expiry.'}</span>${filt?`<button type="button" class="btn sec" data-act="inv-clear">Clear filters</button>`:`<button type="button" class="btn" data-act="add-item">${ic('plus')}Add item</button>`}</div>`;
+};
+function removeItem(id){
+  const i=INV.findIndex(x=>x.id===id); if(i<0)return;
+  const [it]=INV.splice(i,1);
+  S.alerts.forEach(a=>{if(a.item===id&&a.state!=='resolved'){a.state='resolved';a.resolvedAt=nowT();a._auto=true}});
+  updateBadges();
+  toast(`${it.name} was removed from inventory.`,'ok',{label:'Undo',fn:()=>{INV.splice(i,0,it);S.alerts.forEach(a=>{if(a.item===id&&a._auto){a.state='active';delete a._auto}});updateBadges();if(S.screen==='inventory'||S.screen==='expiry')R[S.screen]();toast(`${it.name} was restored.`)}});
+  if(S.screen==='inventory')R.inventoryList(); else if(S.screen==='expiry')R.expiry();
+}
+
+/* ================= Screens 5 to 7: Add item, review, saved ================= */
+const blankDraft=()=>({name:'',cat:'',batch:'',qty:'',uom:'packs',unit:'',received:TODAY,bb:''});
+const FKEY={'i-name':'name','i-cat':'cat','i-batch':'batch','i-qty':'qty','i-uom':'uom','i-unit':'unit','i-received':'received','i-bb':'bb'};
+const steps=n=>`<ol class="steps" aria-label="Progress">${['Details','Review','Saved'].map((t,i)=>`<li ${i+1===n?'aria-current="step"':''} class="${i+1<n?'done':''}"><span>${i+1<n?ic('check','sm'):i+1}</span>${t}</li>`).join('')}</ol>`;
+const crumbs=(...parts)=>`<nav class="crumbs" aria-label="Breadcrumb">${parts.map((p,i)=>i<parts.length-1?`${p}${ic('chev','sm')}`:`<span aria-current="page">${p}</span>`).join('')}</nav>`;
+const linkInv=`<a href="#inventory" data-go="inventory">Inventory</a>`;
+
+function validate(d,only){
+  const e={};
+  if(!d.name.trim())e.name='Enter the product name.';else if(d.name.trim().length<2)e.name='The product name is too short.';
+  if(!d.cat)e.cat='Choose a category.';
+  const q=Number(d.qty); if(d.qty===''||!Number.isInteger(q)||q<1||q>999)e.qty='Enter a whole number from 1 to 999.';
+  if(!d.unit)e.unit='Choose where the item will be stored.';
+  if(!d.received)e.received='Enter the date received.';else if(d.received>TODAY)e.received='The date received cannot be in the future.';
+  if(d.bb){if(d.received&&d.bb<=d.received)e.bb='The best-before date must be after the date received.';else if(d.bb<TODAY)e.bb='This best-before date has already passed. Check the product label.'}
+  return only?(e[only]?{[only]:e[only]}:{}):e;
+}
+function setErr(k,msg){
+  const f=$('#f-'+k); if(!f)return;
+  f.classList.toggle('err',!!msg);
+  const m=$('.errmsg span',f); if(m)m.textContent=msg||'';
+  const i=$('.inp',f); if(i){i.setAttribute('aria-invalid',msg?'true':'false')}
+}
+function unitHint(){
+  const d=S.draft, box=$('#unit-hint'); if(!box)return;
+  let h='',k='info';
+  if(d.cat&&!d.unit){h=`Recommended for ${d.cat.toLowerCase()}: ${uLabel(REC[d.cat])}.`}
+  else if(d.unit){
+    const u=U(d.unit), st=ustatus(u);
+    if(d.cat&&REC[d.cat]!==d.unit){k='warn';h=`${d.cat} is normally stored in the ${uLabel(REC[d.cat])}. Storing it in the ${u.name} can shorten its shelf life.`}
+    else if(st!=='ok'){k='warn';h=`${u.name} is currently ${STX[st].toLowerCase()} at ${fmtT(u.t)} °C. Items stored there may spoil sooner.`}
+    else {k='ok';h=`${u.name} is at ${fmtT(u.t)} °C, within its safe range.`}
+  }
+  box.className='banner '+k; box.hidden=!h; box.innerHTML=h?ic(k==='ok'?'check':k==='warn'?'alert':'info','sm')+`<span>${esc(h)}</span>`:'';
+}
+function estHtml(d,compact){
+  const p=(d.cat&&d.unit&&d.received&&d.received<=TODAY)?predict(d):null;
+  if(!p)return `<h2>Expiry estimate</h2><p class="muted">Choose a category, storage unit and date received to see the predicted expiry date.</p>`;
+  const adj=p.penalty+p.mismatch;
+  return `<h2>Expiry estimate</h2><div class="big">${fmt(p.date)}</div><div class="row">${riskPill(p)}<span class="muted">${p.days<=1?daysTxt(p.days):'in '+daysTxt(p.days)}</span></div>
+  <dl class="sum" style="grid-template-columns:1fr auto;font-size:.88rem"><dt>Confidence</dt><dd>${p.conf}%</dd><dt>Based on</dt><dd>${d.bb?'Supplier best-before':d.cat+' shelf life'}</dd><dt>Storage adjustment</dt><dd>${adj?'−'+adj+' day'+(adj>1?'s':''):'None'}</dd></dl>
+  ${p.risk==='High'?`<div class="banner warn">${ic('alert','sm')}<span>This item is high risk. Saving it will create an alert.</span></div>`:''}
+  <p class="muted" style="font-size:.78rem">Simulated model output for this prototype.</p>`;
+}
+R['item-form']=function(){
+  if(!S.draft)S.draft=blankDraft();
+  const d=S.draft, edit=S.editId!=null;
+  $('#s-item-form').innerHTML=`
+  <div style="display:grid;gap:8px">${crumbs(linkInv,edit?'Edit item':'Add item')}
+  <div class="ph"><div><h1>${edit?'Edit stock item':'Add stock item'}</h1><p>Record what arrived and where it is stored. The estimate updates as you type.</p></div>${steps(1)}</div></div>
+  <div id="f-sum" role="alert"></div>
+  <div class="cols">
+  <form id="item-form" class="card" novalidate style="display:grid;gap:18px">
+    <div class="field" id="f-name"><label for="i-name">Product name</label><input id="i-name" class="inp" maxlength="60" autocomplete="off" placeholder="e.g. Fresh Milk 1L" value="${esc(d.name)}"><span class="errmsg">${ic('alert','sm')}<span></span></span></div>
+    <div class="grid2">
+      <div class="field" id="f-cat"><label for="i-cat">Category</label><select id="i-cat" class="inp"><option value="">Select category</option>${CATS.map(c=>`<option ${d.cat===c?'selected':''}>${c}</option>`).join('')}</select><span class="errmsg">${ic('alert','sm')}<span></span></span></div>
+      <div class="field" id="f-batch"><label for="i-batch">Batch number <span class="muted" style="font-weight:400">(optional)</span></label><input id="i-batch" class="inp mono" maxlength="20" placeholder="Assigned if left blank" value="${esc(d.batch)}"></div>
+    </div>
+    <div class="grid2">
+      <div class="field" id="f-qty"><label for="i-qty">Quantity</label><input id="i-qty" class="inp" type="number" inputmode="numeric" min="1" max="999" step="1" placeholder="e.g. 24" value="${esc(d.qty)}"><span class="errmsg">${ic('alert','sm')}<span></span></span></div>
+      <div class="field"><label for="i-uom">Unit of measure</label><select id="i-uom" class="inp">${['packs','kg','pcs','tubs','boxes'].map(c=>`<option ${d.uom===c?'selected':''}>${c}</option>`).join('')}</select></div>
+    </div>
+    <div class="field" id="f-unit"><label for="i-unit">Storage unit</label><select id="i-unit" class="inp"><option value="">Select storage unit</option>${UNITS.map(u=>`<option value="${u.id}" ${d.unit===u.id?'selected':''}>${esc(u.name)} (${fmtT(u.t)} °C now)</option>`).join('')}</select><span class="errmsg">${ic('alert','sm')}<span></span></span><div id="unit-hint" class="banner info" hidden></div></div>
+    <div class="grid2">
+      <div class="field" id="f-received"><label for="i-received">Date received</label><input id="i-received" class="inp" type="date" max="${TODAY}" value="${esc(d.received)}"><span class="errmsg">${ic('alert','sm')}<span></span></span></div>
+      <div class="field" id="f-bb"><label for="i-bb">Supplier best-before date <span class="muted" style="font-weight:400">(optional)</span></label><input id="i-bb" class="inp" type="date" value="${esc(d.bb)}"><span class="hint">Printed on the product. Leave blank if there is none.</span><span class="errmsg">${ic('alert','sm')}<span></span></span></div>
+    </div>
+    <div class="row sb" style="padding-top:6px"><button type="button" class="btn sec" data-act="form-cancel">Cancel</button><button type="submit" class="btn" style="min-height:48px">Review item ${ic('chev','sm')}</button></div>
+  </form>
+  <aside class="card est" id="est" aria-live="polite">${estHtml(d)}</aside></div>`;
+  unitHint();
+};
+function refreshEst(){const e=$('#est');if(e)e.innerHTML=estHtml(S.draft);unitHint()}
+
+R['item-review']=function(){
+  const d=S.draft; if(!d){go('item-form');return}
+  const u=U(d.unit), p=predict(d), edit=S.editId!=null;
+  $('#s-item-review').innerHTML=`
+  <div style="display:grid;gap:8px">${crumbs(linkInv,`<button type="button" data-act="back-edit">${edit?'Edit item':'Add item'}</button>`,'Review')}
+  <div class="ph"><div><h1>Review before saving</h1><p>Check the details. Nothing is saved until you confirm.</p></div>${steps(2)}</div></div>
+  <div class="cols">
+    <section class="card"><h2>Item details</h2><dl class="sum">
+      <dt>Product</dt><dd>${esc(d.name.trim())}</dd><dt>Category</dt><dd>${esc(d.cat)}</dd>
+      <dt>Batch number</dt><dd class="mono">${esc(d.batch.trim()||'Assigned on save')}</dd>
+      <dt>Quantity</dt><dd>${Number(d.qty)} ${esc(d.uom)}</dd>
+      <dt>Storage unit</dt><dd>${esc(u.name)} ${stPill(u)}</dd>
+      <dt>Date received</dt><dd>${fmt(d.received)}</dd>
+      <dt>Supplier best-before</dt><dd>${d.bb?fmt(d.bb):'Not provided'}</dd></dl></section>
+    <aside class="card est">${estHtml(d)}</aside>
+  </div>
+  <div class="row sb"><button type="button" class="btn sec" data-act="back-edit">${ic('back','sm')}Back to edit</button>
+    <button type="button" class="btn" id="confirm-btn" data-act="confirm-save" style="min-height:48px">${ic('check','sm')}Confirm and save</button></div>`;
+};
+function saveDraft(){
+  const d=S.draft; let it; const edit=S.editId!=null;
+  if(edit){it=INV.find(x=>x.id===S.editId);Object.assign(it,{name:d.name.trim(),cat:d.cat,batch:d.batch.trim()||it.batch,qty:Number(d.qty),uom:d.uom,unit:d.unit,received:d.received,bb:d.bb})}
+  else{it={id:S.nextId++,name:d.name.trim(),cat:d.cat,unit:d.unit,qty:Number(d.qty),uom:d.uom,received:d.received,bb:d.bb,batch:d.batch.trim()||`B${d.received.slice(2,4)}${d.received.slice(5,7)}-${String(INV.length+20).padStart(3,'0')}`};INV.push(it)}
+  const p=predict(it); let alerted=false;
+  if(p.risk==='High'&&!S.alerts.some(a=>a.item===it.id&&a.state!=='resolved')){S.alerts.unshift(expiryAlert(it,p,true));alerted=true}
+  S.saved={id:it.id,edited:edit,alerted};S.highlight=it.id;S.draft=null;S.editId=null;S.dirty=false;
+  updateBadges();toast(`${it.name} ${edit?'updated':'saved'} in ${uLabel(it.unit)}.`);go('item-done');
+}
+R['item-done']=function(){
+  const s=S.saved, it=s&&INV.find(x=>x.id===s.id); if(!it){go('inventory');return}
+  const p=predict(it);
+  $('#s-item-done').innerHTML=`
+  <div class="ph" style="justify-content:center">${steps(4)}</div>
+  <section class="card done-hero" style="padding:32px 20px"><div class="tick">${ic('check')}</div><h1>${esc(it.name)} ${s.edited?'updated':'saved'}</h1>
+    <p class="muted">${it.qty} ${esc(it.uom)} stored in the ${esc(uLabel(it.unit))}. It now appears in your inventory.</p></section>
+  <div class="cols"><section class="card est">${estHtml(it)}</section>
+    <section class="card"><h2>What happens next</h2><div class="list">
+      <div class="li"><div><b>Tracked automatically</b><small>Temperature and humidity of the ${esc(uLabel(it.unit))} feed the expiry estimate.</small></div>${ic('check')}</div>
+      ${s.alerted?`<div class="li"><div><b>Alert created</b><small>The item is high risk, so it is listed under Alerts.</small></div>${ic('bell')}</div>`:''}
+      <div class="li"><div><b>Review any time</b><small>Open Expiry predictions to see why this date was chosen.</small></div>${ic('clock')}</div></div></section></div>
+  <div class="row" style="justify-content:center;gap:12px"><button type="button" class="btn" data-act="add-item" style="min-height:48px">${ic('plus','sm')}Add another item</button>
+    <button type="button" class="btn sec" data-act="view-inv" style="min-height:48px">View in inventory</button>
+    <a class="btn ghost" href="#dashboard" data-go="dashboard">Back to dashboard</a></div>`;
+};
+
+/* ================= Screen 8: Expiry predictions ================= */
+function freshChart(it,p){
+  const W=640,H=210,L=44,Rr=16,T=22,B=34, a=pd(it.received), b=Math.max(pd(p.date),a+MS), t=pd(TODAY), bb=it.bb?pd(it.bb):null;
+  const end=Math.max(b,bb||0,t)+(b-a)*.06, span=end-a;
+  const x=v=>L+(W-L-Rr)*(v-a)/span, y=v=>T+(H-T-B)*(1-v/100);
+  const pts=[];for(let i=0;i<=24;i++){const s=i/24;pts.push(`${x(a+(b-a)*s).toFixed(1)},${y(100*(1-Math.pow(s,1.6))).toFixed(1)}`)}
+  pts.push(`${x(end).toFixed(1)},${y(0)}`);
+  let g='';[0,50,100].forEach(v=>{g+=`<line class="ch-grid" x1="${L}" x2="${W-Rr}" y1="${y(v)}" y2="${y(v)}"/><text class="ch-txt" x="${L-8}" y="${y(v)+4}" text-anchor="end">${v}%</text>`});
+  const tx=x(clamp(t,a,end));
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Predicted freshness of ${esc(it.name)} from ${fmtS(it.received)} to ${fmtS(p.date)}">${g}
+  ${bb?`<line class="ch-dash" x1="${x(bb)}" x2="${x(bb)}" y1="${T}" y2="${H-B}"/>`:''}
+  <polyline class="ch-line" points="${pts.join(' ')}"/><line class="ch-today" x1="${tx}" x2="${tx}" y1="${T}" y2="${H-B}"/>
+  <text class="ch-txt" x="${tx}" y="${T-7}" text-anchor="middle">Today</text>
+  <circle class="ch-dot" cx="${x(b)}" cy="${y(0)}" r="5"/>
+  <text class="ch-txt" x="${L}" y="${H-10}" text-anchor="start">Received ${fmtS(it.received)}</text>
+  <text class="ch-txt" x="${W-Rr}" y="${H-10}" text-anchor="end">Predicted ${fmtS(p.date)}</text></svg>`;
+}
+R.expiry=function(){
+  const all=sortedByExpiry(), f=S.expFilter, rows=all.filter(r=>f==='All'||r.p.risk===f);
+  if(!rows.some(r=>r.it.id===S.expSel))S.expSel=rows.length?rows[0].it.id:null;
+  const cnt=k=>k==='All'?all.length:all.filter(r=>r.p.risk===k).length;
+  $('#s-expiry').innerHTML=`
+  <div class="ph"><div><h1>Expiry predictions</h1><p>Stock ordered by predicted expiry. Select an item to see why.</p></div>
+    <div class="seg" role="group" aria-label="Risk filter">${['All','High','Medium','Low'].map(k=>`<button type="button" aria-pressed="${f===k}" data-act="exp-filter" data-id="${k}">${k==='All'?'All':k+' risk'} (${cnt(k)})</button>`).join('')}</div></div>
+  ${rows.length?`<div class="cols" style="grid-template-columns:minmax(0,1fr) minmax(0,1.2fr)">
+    <section class="card" style="padding:8px 12px"><div class="list" role="list">${rows.map(({it,p})=>`<div role="listitem"><button type="button" data-act="exp-sel" data-id="${it.id}" aria-current="${it.id===S.expSel}" class="li" style="width:100%;border:0;border-bottom:1px solid var(--line);background:${it.id===S.expSel?'var(--accent-soft)':'transparent'};color:inherit;font:inherit;text-align:left;cursor:pointer;padding:8px 10px;border-radius:8px"><span><b>${esc(it.name)}</b><small>${esc(uLabel(it.unit))} · ${fmtS(p.date)} (${daysTxt(p.days)})</small></span>${riskPill(p)}</button></div>`).join('')}</div></section>
+    <section class="card" id="exp-detail">${expDetail(rows.find(r=>r.it.id===S.expSel))}</section></div>`
+  :`<div class="card empty">${ic('check','lg')}<b>No ${f.toLowerCase()} risk items</b><span>Nothing in stock matches this filter.</span></div>`}`;
+};
+function expDetail(r){
+  const {it,p}=r, u=U(it.unit), adj=[];
+  if(p.penalty)adj.push(`${u.name} is ${STX[p.st].toLowerCase()} (−${p.penalty})`);
+  if(p.mismatch)adj.push(`not the usual unit for ${it.cat.toLowerCase()} (−${p.mismatch})`);
+  const act=(label,primary)=>`<button type="button" class="btn ${primary?'':'sec'} sm" data-act="exp-tag" data-id="${it.id}" data-tag="${esc(label)}" ${it.tag===label?'disabled':''}>${it.tag===label?esc(label)+' (done)':esc(label)}</button>`;
+  return `<div class="row sb"><div><h2 style="margin:0">${esc(it.name)}</h2><small class="muted mono">${esc(it.batch)} · ${it.qty} ${esc(it.uom)}</small></div>${riskPill(p)}</div>
+  <div style="margin:14px 0">${freshChart(it,p)}</div>
+  <dl class="sum" style="grid-template-columns:minmax(120px,.8fr) 1.2fr">
+    <dt>Predicted expiry</dt><dd>${fmt(p.date)} (${daysTxt(p.days)})</dd>
+    <dt>Confidence</dt><dd>${p.conf}%</dd>
+    <dt>Supplier best-before</dt><dd>${it.bb?fmt(it.bb):'Not provided'}</dd>
+    <dt>Days in storage</dt><dd>${Math.max(0,diff(it.received,TODAY))}</dd>
+    <dt>Storage now</dt><dd>${esc(u.name)}, ${fmtT(u.t)} °C (safe ${fmtT(u.tmin)} to ${fmtT(u.tmax)})</dd>
+    <dt>Adjustment</dt><dd>${adj.length?esc(adj.join('; ')):'None'}</dd></dl>
+  ${it.tag?`<div style="margin-top:12px">${pill('neutral',it.tag,'tag')}</div>`:''}
+  <div class="row" style="margin-top:16px">${p.risk==='High'||p.days<0?act('Mark for markdown',true):''}${p.risk!=='Low'?act('Move to front (FEFO)',p.risk==='Medium'):''}
+    <button type="button" class="btn ghost sm" data-act="rm-item" data-id="${it.id}">${ic('trash','sm')}Remove from stock</button></div>`;
+}
+
+/* ================= Screen 9: Alerts and settings ================= */
+const KICON={temp:'thermo',expiry:'clock',sensor:'info',door:'alert'};
+R.alerts=function(){
+  const act=S.alerts.filter(a=>a.state!=='resolved'), res=S.alerts.filter(a=>a.state==='resolved'), tab=S.alertTab, list=tab==='active'?act:res;
+  const u=U(S.setUnit);
+  $('#s-alerts').innerHTML=`
+  <div class="ph"><div><h1>Alerts and settings</h1><p>Respond to problems and choose when you are warned.</p></div></div>
+  <div class="cols">
+    <section class="card" style="min-width:0"><div class="seg" role="group" aria-label="Alert status">
+      <button type="button" aria-pressed="${tab==='active'}" data-act="al-tab" data-id="active">Active (${act.length})</button>
+      <button type="button" aria-pressed="${tab==='resolved'}" data-act="al-tab" data-id="resolved">Resolved (${res.length})</button></div>
+      <div style="margin-top:8px">${list.length?list.map(a=>`<div class="al"><span class="sev ${a.sev}">${ic(KICON[a.kind]||'bell')}</span>
+        <div style="min-width:0"><b>${esc(a.title)}</b><br><small>${esc(a.body)}</small><br><small>${a.state==='resolved'?'Resolved '+esc(a.resolvedAt||''):'Raised '+esc(a.time)}</small></div>
+        <div class="acts">${a.state==='active'?`<button type="button" class="btn sec sm" data-act="al-ack" data-id="${a.id}">Acknowledge</button>`:a.state==='ack'?pill('neutral','Acknowledged','check'):pill('ok','Resolved','check')}
+        ${a.state!=='resolved'?(a.kind==='expiry'?`<button type="button" class="btn sm" data-act="open-exp" data-id="${a.item}">Review item</button>`:a.unit?`<button type="button" class="btn sm" data-act="open-mon" data-id="${a.unit}">Open monitor</button>`:''):''}</div></div>`).join(''):`<div class="empty">${ic('check','lg')}<b>${tab==='active'?'No active alerts':'No resolved alerts yet'}</b><span>${tab==='active'?'All storage units are in range.':'Resolved alerts will be listed here.'}</span></div>`}</div></section>
+    <section class="card"><h2>Alert settings</h2><form id="set-form" novalidate style="display:grid;gap:14px">
+      <div class="field"><label for="s-unit">Storage unit</label><select id="s-unit" class="inp">${UNITS.map(x=>`<option value="${x.id}" ${x.id===S.setUnit?'selected':''}>${esc(x.name)}</option>`).join('')}</select></div>
+      <div class="grid2"><div class="field" id="f-tmin"><label for="s-tmin">Min temperature (°C)</label><input id="s-tmin" class="inp" inputmode="decimal" value="${fmtT(u.tmin)}"></div>
+        <div class="field" id="f-tmax"><label for="s-tmax">Max temperature (°C)</label><input id="s-tmax" class="inp" inputmode="decimal" value="${fmtT(u.tmax)}"></div></div>
+      <div class="grid2"><div class="field" id="f-hmin"><label for="s-hmin">Min humidity (%)</label><input id="s-hmin" class="inp" inputmode="numeric" value="${u.hmin}"></div>
+        <div class="field" id="f-hmax"><label for="s-hmax">Max humidity (%)</label><input id="s-hmax" class="inp" inputmode="numeric" value="${u.hmax}"></div></div>
+      <div class="field" id="f-days"><label for="s-days">Warn when expiry is within (days)</label><input id="s-days" class="inp" inputmode="numeric" value="${S.warnDays}"><span class="hint">Between 3 and 14 days.</span></div>
+      <span class="errmsg" id="e-set-form" style="display:none">${ic('alert','sm')}<span></span></span>
+      <fieldset style="margin:0;border:1.5px solid var(--line);border-radius:10px;padding:2px 14px 6px"><legend style="font-weight:700;font-size:.85rem;padding:0 6px">Notify me by</legend>
+        <label class="check"><input type="checkbox" checked disabled> On-screen alert (always on)</label>
+        <label class="check"><input type="checkbox" id="n-sms"> SMS</label><label class="check"><input type="checkbox" id="n-mail" checked> Email</label></fieldset>
+      <div class="row"><button type="submit" class="btn" style="min-height:48px">Save settings</button><button type="button" class="btn sec" data-act="set-reset">Reset to defaults</button></div>
+    </form></section>
+  </div>`;
+};
+
+/* ================= Events ================= */
+function toggleTheme(){
+  const root=document.documentElement, cur=root.dataset.theme||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
+  const next=cur==='dark'?'light':'dark'; root.dataset.theme=next;
+  $$('[data-act="theme"] use').forEach(u=>u.setAttribute('href','#i-'+(next==='dark'?'sun':'moon')));
+}
+function enter(){$('#login').hidden=true;$('#shell').hidden=false;startSim();go('dashboard')}
+function leave(){stopSim();$('#shell').hidden=true;$('#login').hidden=false;S.screen='login';S.draft=null;S.dirty=false;$('#pass').value='';window.scrollTo(0,0);$('#user').focus()}
+function guardedGo(screen){
+  const inFlow=(S.screen==='item-form'||S.screen==='item-review')&&S.draft&&S.dirty;
+  if(inFlow&&screen!=='item-form'&&screen!=='item-review'){
+    confirmBox({title:'Discard this item?',body:'You have unsaved details. If you leave now they will be lost.',ok:'Discard and leave',cancel:'Keep editing',danger:true,fn:()=>{S.draft=null;S.dirty=false;S.editId=null;go(screen)}});
+    return;
+  }
+  go(screen);
+}
+function applySet(){
+  const u=U(S.monUnit), inp=$('#m-set'), v=parseFloat(inp.value.replace('−','-').replace(',','.'));
+  let msg='';
+  if(isNaN(v))msg='Enter the target as a number, for example 3.0.';
+  else if(v<u.tmin||v>u.tmax)msg=`The target must stay between ${fmtT(u.tmin)} and ${fmtT(u.tmax)} °C, the safe range for this unit.`;
+  setErr('set',msg); const e=$('#e-set span'); if(e)e.textContent=msg;
+  if(msg){inp.focus();return}
+  u.set=Math.round(v*2)/2===v?v:Math.round(v*10)/10; inp.value=fmtT(u.set);
+  toast(`Target for ${u.name} set to ${fmtT(u.set)} °C.${u.mode==='manual'?' Switch to Automatic for the target to take effect.':''}`);
+}
+function saveSettings(){
+  const u=U(S.setUnit), g=id=>$('#'+id).value.replace('−','-').replace(',','.').trim();
+  const tmin=parseFloat(g('s-tmin')), tmax=parseFloat(g('s-tmax')), hmin=parseInt(g('s-hmin'),10), hmax=parseInt(g('s-hmax'),10), days=parseInt(g('s-days'),10);
+  const bad={}; let msg='';
+  if(isNaN(tmin)||isNaN(tmax)){bad.tmin=bad.tmax=1;msg='Enter temperatures as numbers.'}
+  else if(tmin>=tmax){bad.tmin=bad.tmax=1;msg='Minimum temperature must be lower than the maximum.'}
+  else if(isNaN(hmin)||isNaN(hmax)||hmin<0||hmax>100||hmin>=hmax){bad.hmin=bad.hmax=1;msg='Humidity must be between 0 and 100, with the minimum lower than the maximum.'}
+  else if(isNaN(days)||days<3||days>14){bad.days=1;msg='Choose an expiry warning between 3 and 14 days.'}
+  $$('#set-form .field').forEach(f=>f.classList.remove('err'));
+  const box=$('#e-set-form'); box.style.display=msg?'flex':'none'; $('span',box).textContent=msg;
+  if(msg){const k=Object.keys(bad)[0];$('#f-'+k).classList.add('err');$('#s-'+k).focus();return}
+  Object.assign(u,{tmin,tmax,hmin,hmax}); S.warnDays=days; u.set=clamp(u.set,tmin,tmax);
+  checkAlerts(); updateBadges(); R.alerts();
+  toast(`Settings saved for ${u.name}.`);
+}
+
+document.addEventListener('click',e=>{
+  const g=e.target.closest('[data-go]');
+  if(g){e.preventDefault();if(g.dataset.unit)S.monUnit=g.dataset.unit;guardedGo(g.dataset.go);return}
+  const a=e.target.closest('[data-act]'); if(!a)return;
+  const id=a.dataset.id, nid=Number(id);
+  switch(a.dataset.act){
+    case 'theme':toggleTheme();break;
+    case 'logout':confirmBox({title:'Log out?',body:'You will return to the login screen. Unsaved changes will be lost.',ok:'Log out',cancel:'Stay logged in',fn:leave});break;
+    case 'add-item':S.editId=null;S.draft=blankDraft();S.dirty=false;go('item-form');break;
+    case 'edit-item':{const it=INV.find(x=>x.id===nid);S.editId=nid;S.draft={name:it.name,cat:it.cat,batch:it.batch,qty:String(it.qty),uom:it.uom,unit:it.unit,received:it.received,bb:it.bb||''};S.dirty=false;go('item-form');break}
+    case 'rm-item':{const it=INV.find(x=>x.id===nid);if(!it)break;confirmBox({title:`Remove ${it.name}?`,body:'It will be taken out of your inventory. You can undo this right after.',ok:'Remove item',danger:true,fn:()=>removeItem(nid)});break}
+    case 'inv-risk':S.inv.risk=id;R.inventory();break;
+    case 'inv-clear':S.inv={q:'',cat:'All',unit:'All',risk:'All'};R.inventory();break;
+    case 'mon-unit':S.monUnit=id;R.monitoring();break;
+    case 'range':S.range=id;R.monitoring();break;
+    case 'set-step':{const u=U(S.monUnit),i=$('#m-set');let v=parseFloat(i.value.replace('−','-'));if(isNaN(v))v=u.set;v=clamp(Math.round((v+Number(a.dataset.d))*2)/2,u.tmin,u.tmax);i.value=fmtT(v);setErr('set','');break}
+    case 'apply-set':applySet();break;
+    case 'auto-on':{const u=U(S.monUnit);u.mode='auto';toast(`${u.name} is now in Automatic mode. Cooling will hold ${fmtT(u.set)} °C.`);R.monitoring();break}
+    case 'open-mon':S.monUnit=id;go('monitoring');break;
+    case 'open-exp':S.expSel=nid;S.expFilter='All';go('expiry');break;
+    case 'exp-filter':S.expFilter=id;R.expiry();break;
+    case 'exp-sel':S.expSel=nid;R.expiry();{const b=$('#s-expiry [aria-current="true"]');b&&b.focus()}break;
+    case 'exp-tag':{const it=INV.find(x=>x.id===nid);it.tag=a.dataset.tag;toast(`${it.name}: ${it.tag}.`);$('#exp-detail').innerHTML=expDetail({it,p:predict(it)});break}
+    case 'al-tab':S.alertTab=id;R.alerts();break;
+    case 'al-ack':{const al=S.alerts.find(x=>x.id===nid);if(al){al.state='ack';updateBadges();R.alerts();toast(al.kind==='temp'?'Alert acknowledged. It stays open until the temperature is back in range.':'Alert acknowledged.')}break}
+    case 'set-reset':{const u=U(S.setUnit);[u.tmin,u.tmax,u.hmin,u.hmax]=u.def;S.warnDays=5;u.set=clamp(u.set,u.tmin,u.tmax);checkAlerts();R.alerts();toast(`Defaults restored for ${u.name}.`);break}
+    case 'form-cancel':
+      if(S.dirty)confirmBox({title:'Discard this item?',body:'You have unsaved details. If you cancel now they will be lost.',ok:'Discard',cancel:'Keep editing',danger:true,fn:()=>{S.draft=null;S.dirty=false;S.editId=null;go('inventory')}});
+      else{S.draft=null;S.editId=null;go('inventory')}break;
+    case 'back-edit':go('item-form');break;
+    case 'confirm-save':a.disabled=true;a.textContent='Saving...';saveDraft();break;
+    case 'view-inv':go('inventory');break;
+  }
+});
+
+document.addEventListener('input',e=>{
+  const t=e.target, key=FKEY[t.id];
+  if(key&&S.draft){
+    if(key==='cat'){const prev=REC[S.draft.cat];S.draft.cat=t.value;if(!S.draft.unit||S.draft.unit===prev){S.draft.unit=REC[t.value]||'';$('#i-unit').value=S.draft.unit;setErr('unit','')}}
+    else S.draft[key]=t.value;
+    S.dirty=true;
+    if($('#f-'+key)&&$('#f-'+key).classList.contains('err'))setErr(key,validate(S.draft,key)[key]||'');
+    refreshEst();return;
+  }
+  if(t.id==='inv-q'){S.inv.q=t.value;R.inventoryList()}
+});
+document.addEventListener('change',e=>{
+  const t=e.target;
+  if(t.id==='inv-cat'){S.inv.cat=t.value;R.inventoryList()}
+  else if(t.id==='inv-unit'){S.inv.unit=t.value;R.inventoryList()}
+  else if(t.name==='mode'){const u=U(S.monUnit);u.mode=t.value;toast(t.value==='auto'?`${u.name} is in Automatic mode. Cooling will hold ${fmtT(u.set)} °C.`:`${u.name} is in Manual mode. You control the cooling switch.`,t.value==='auto'?'ok':'warn');R.paintMonitoring(true)}
+  else if(t.id==='m-sw'){const u=U(S.monUnit);u.cooling=t.checked;toast(`Cooling ${t.checked?'switched on':'switched off'} for ${u.name}.`,t.checked?'ok':'warn');R.paintMonitoring(true)}
+  else if(t.id==='s-unit'){S.setUnit=t.value;R.alerts()}
+});
+document.addEventListener('focusout',e=>{
+  const key=FKEY[e.target.id];
+  if(key&&S.draft&&$('#f-'+key)&&['name','cat','qty','unit','received','bb'].includes(key))setErr(key,validate(S.draft,key)[key]||'');
+});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='m-set'){e.preventDefault();applySet()}});
+document.addEventListener('submit',e=>{
+  e.preventDefault();
+  const f=e.target;
+  if(f.id==='login-form'){
+    const u=$('#user').value.trim(), p=$('#pass').value;
+    $('#f-user').classList.toggle('err',!u);$('#f-pass').classList.toggle('err',!p);
+    if(!u){$('#user').focus();return}
+    if(!p){$('#pass').focus();return}
+    S.role=$('#role').value;$('#who-role').textContent=S.role;enter();toast(`Welcome. You are logged in as ${S.role}.`);
+  }else if(f.id==='item-form'){
+    const keys=['name','cat','qty','unit','received','bb'], labels={name:'Product name',cat:'Category',qty:'Quantity',unit:'Storage unit',received:'Date received',bb:'Best-before date'};
+    const errs=validate(S.draft); keys.forEach(k=>setErr(k,errs[k]||''));
+    const bad=keys.filter(k=>errs[k]);
+    $('#f-sum').innerHTML=bad.length?`<div class="banner bad">${ic('alert')}<div><b>Fix ${bad.length} ${bad.length===1?'field':'fields'} to continue</b>${bad.map(k=>labels[k]).join(', ')}</div></div>`:'';
+    if(bad.length){const first=$('#i-'+({name:'name',cat:'cat',qty:'qty',unit:'unit',received:'received',bb:'bb'})[bad[0]]);first&&first.focus();return}
+    go('item-review');
+  }else if(f.id==='set-form')saveSettings();
+});
+$('#pw-toggle').addEventListener('click',e=>{
+  const i=$('#pass'),show=i.type==='password';i.type=show?'text':'password';
+  e.currentTarget.setAttribute('aria-label',show?'Hide password':'Show password');
+});
+$('#demo-fill').addEventListener('click',()=>{$('#user').value='maria.santos';$('#pass').value='demo1234';$('#f-user').classList.remove('err');$('#f-pass').classList.remove('err')});
+$('#user').addEventListener('input',()=>$('#f-user').classList.remove('err'));
+$('#pass').addEventListener('input',()=>$('#f-pass').classList.remove('err'));
+
+seedAlerts();updateBadges();
+})();
+</script>
